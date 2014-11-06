@@ -23,30 +23,10 @@
 AudioInputI2S            i2s_in;
 AudioAnalyzeFFT256       fft;
 AudioConnection          patchCord1(i2s_in, 0, fft, 0);
-AudioPlaySdWav           playWav1;
-AudioOutputI2S           i2s_out;
-AudioConnection          patchCord2(playWav1, 0, i2s_out, 0);
-AudioConnection          patchCord3(playWav1, 1, i2s_out, 1);
 AudioControlSGTL5000     sgtl5000;
 
-// This is the amount of peaks detected, in frequency domain, from
-// the original melody sample.
-#define KEY_LEN 200
-
-// This is the amount of times the user should repeat the original
-// whistled melody.
-#define VERIFICATION_COUNT 2
-
-// Peaks in frequency domain from the original melody.
-int key[KEY_LEN];
-
-// Estimated during the verificatin phase keeps into account
-//  the ability of the user to repeat the melody consistently.
-int expectedError = 0;
-
-// How main bins a detected peak can be off from the expected
-// and still be considered valid.
-#define DETECT_ERROR_HYSTERESIS 5
+#define LED_KATODE_PIN A7
+#define LED_ANODE_PIN A6
 
 void setup()
 {
@@ -54,54 +34,102 @@ void setup()
   sgtl5000.enable();
   sgtl5000.inputSelect(AUDIO_INPUT_MIC);
   sgtl5000.lineInLevel(15);  
-  sgtl5000.volume(0.5);
   
-  // For testing we have for now a LED between A7 and A6
-  pinMode(A7, OUTPUT);
-  pinMode(A6, OUTPUT);
-  analogWrite(A7, 0);
-  analogWrite(A6, 0);
-
+  // For testing we have for now a LED between LED_KATODE_PIN and LED_ANODE_PIN
+  pinMode(LED_KATODE_PIN, OUTPUT);
+  pinMode(LED_ANODE_PIN, OUTPUT);
+  analogWrite(LED_KATODE_PIN, 0);
+  analogWrite(LED_ANODE_PIN, 0);
 }
 
-float maxValue=0.1;
+// Threshold of the detector, scale is 0 to 1
+#define NOISE_THRESHOLD 0.1
+
+// Beat length comparator aperture in %/100
+#define BEAT_COMPARATOR_APERTURE 0.05
+
+// Max interval between beats, in mS before
+// the comparator resets the beat interval measurement.
+#define MAX_BEAT_INTERVAL 2000
+
+// Min interval between bits. This prevents
+// retriggering on the same beat.
+#define MIN_BEAT_INTERVAL 100
+
+// Which FFT bin is used for beat detection.
+// We have a sample rate of 44.1KHz, and FFT size of 256.
+// So bin 4 collects the energy of components from
+// roughly 300Hz to 380Hz. This reaact nicely to
+// a snare drum beat.
+#define DETECTOR_BIN 4
+
+// Delay in mS between two consecutive samples of the 
+// spectrum frequency content.
+#define SAMPLE_DELAY 50
+
+// Decay rate of the last beat interval register
+// expressed as a %/100.
+// Note: this is the decay in SAMPLE_DELAY mS
+#define LAST_BEAT_INTERVAL_DECAY_RATE 0.05
+
+// Decay rate of the peak detector expressed as linear value.
+// Note: this is the decay in SAMPLE_DELAY mS
+#define PEAK_DETECTOR_DECAY_RATE 0.01
+
+// Current peak detected.
+float peakDetectorMax=NOISE_THRESHOLD;
+
+// Timer value of the last valid beat detected.
 long lastBeatTime=0;
-float beatInterval=0;
+
+// Last detected interval between beats. This allows
+// to track the current beat and avoid retriggering
+// when there are rythm alterations in the beat.
 float lastBeatInterval=0;
 
 void loop()
 {
-  while(!fft.available())
-  {
-    delay(10); 
-  };
+  while(!fft.available()){ delay(10); }
   
-  float currentEnergy=fft.read(4);
-  if(currentEnergy>maxValue)
+  // Get the current energy in the FFT bin.
+  float currentEnergy=fft.read(DETECTOR_BIN);
+  
+  if(currentEnergy>peakDetectorMax)
   {
-        maxValue=currentEnergy;
+        // We have a new peak.
+        peakDetectorMax=currentEnergy;
    
-        beatInterval=millis()-lastBeatTime;
-        lastBeatTime=millis();
+        // Estimate time elapsed since last beat.
+        float beatInterval=millis()-lastBeatTime;
         
-        if(lastBeatInterval==0 || lastBeatInterval>2000 || beatInterval>lastBeatInterval*0.8)
+        // Apply a window so that if this beat time is below BEAT_COMPARATOR_APERTURE from the last beat time
+        // we skip this beat. We still accept it if this is the first one or it's been too long since the last
+        // beat (e.g. track change).
+        if(lastBeatInterval==0 || beatInterval>MAX_BEAT_INTERVAL || beatInterval>lastBeatInterval*(1.0-BEAT_COMPARATOR_APERTURE))
         {
+          lastBeatTime=millis();
+        
           lastBeatInterval=beatInterval;
-          analogWrite(A6, HIGH);
+          analogWrite(LED_ANODE_PIN, HIGH);
+          Serial.println(lastBeatInterval);
+          delay(MIN_BEAT_INTERVAL);
+          analogWrite(LED_ANODE_PIN, LOW);
         }
-          delay(100);
-          analogWrite(A6, LOW);
-       
   }
   else
   {
-    analogWrite(A6, LOW); 
-    beatInterval=beatInterval*0.95;
+    // No beat detected, we need to wait before we sample the spectrum again. 
+    delay(SAMPLE_DELAY);
+    
+    // Let the last beat interval decay so we allow for slow beat change
+    // without skipping beats.
+    lastBeatInterval=lastBeatInterval*(1.0-LAST_BEAT_INTERVAL_DECAY_RATE);
    
-    delay(50);
-    if(maxValue>0.1)
+    // Let the detected peak decay up to the noise threshold so we can
+    // adjust ourselves to volume changes.
+    if(peakDetectorMax>NOISE_THRESHOLD)
     {
-      maxValue-=0.01;
+      peakDetectorMax-=PEAK_DETECTOR_DECAY_RATE;
     } 
   }
   
