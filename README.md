@@ -2,6 +2,8 @@ This device follows the beat of the music it hears through its microphone by lig
 
 The device first of all pefroms an FFT on the inconing signal and does peak detection on an FFT bin corresponding to a frequency between roughly 300Hz and 380Hz. This corresponds to a snare drum beat. The peak threshold decays in time so multiple beats can be detected and for each the LED is lit. Once a beat is established the device applys a window around it, in time domain, so that eventual changes in rythm in the song don't cause multiple triggerings. The window constantly adjusts to the current beat so that slides in rythm can be followed.
 
+You can see a video of the device in action here: http://youtu.be/77rwu9_RG3M Note that if you are using bluetooth headphons or your browser is having and hard time keeping the audio and video stream in sync there might be a little lag that maks the LED actually go off with the snare drum hit or even makes it look like the LED is leading the snare. It's just a playbcak issue, the original video shows the LED pefectly following the snare.
+
 Hardware
 ===========
 
