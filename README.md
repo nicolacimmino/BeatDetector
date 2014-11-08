@@ -23,3 +23,8 @@ First of all we make an FFT so we can evaluate the energy of the signal in the f
 Once we know how the energy of the snare drums sound evolves in time we pass that through a peak detector. A peak detector holds the maximum value it has seen at its input and, in our implementation, it also outputs a pulse whenever a new maximum is detected. Additionally the detected maximum slowly decays with time so a new beat can be detected but the same one won't retirigger the output.
 
 At this stage we are left with a short pulse per every beat of the snare drum, which could be a good result already to control, for instance, light effects. What I was after though was an actual constant beat syncronized with the rithm of the music. So I added a non retrigerrable monostable block. This has the benefit to lengthen the pulse, first of all, which makes the LED more visible.  Secondly, since it's non retriggerable, it will prevent any beat following the first from retriggering again the output. Of course this sounds like a bad idea, but not if we introduce a delay line that will reset the monostable. How much delay? The delay line starts from a zero delay, so resets the monostable immediately. It then measures the delay between two beats and adjusts itself to slightly lower than that. In this way any irregularity in the drums pattern, which will cause extra beats between the expected ones will be suppressed, but the beat will still be caught if timing is slightly off. Additionally the delay decays if no pulses are detected so that the device can adapt to eventual rythm changes.
+
+References
+===========
+
+http://www.independentrecording.net/irn/resources/freqchart/main_display.htm
