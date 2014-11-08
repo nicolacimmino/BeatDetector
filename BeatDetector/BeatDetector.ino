@@ -21,26 +21,12 @@
 #include <SD.h>
 
 AudioInputI2S            i2s_in;
-AudioAnalyzeFFT256       fft;
-AudioConnection          patchCord1(i2s_in, 0, fft, 0);
+AudioAnalyzeToneDetect   toneDetector; 
+AudioConnection          patchCord1(i2s_in, 0, toneDetector, 0);
 AudioControlSGTL5000     sgtl5000;
 
 #define LED_KATODE_PIN A7
 #define LED_ANODE_PIN A6
-
-void setup()
-{
-  AudioMemory(12);
-  sgtl5000.enable();
-  sgtl5000.inputSelect(AUDIO_INPUT_MIC);
-  sgtl5000.lineInLevel(15);  
-  
-  // For testing we have for now a LED between LED_KATODE_PIN and LED_ANODE_PIN
-  pinMode(LED_KATODE_PIN, OUTPUT);
-  pinMode(LED_ANODE_PIN, OUTPUT);
-  analogWrite(LED_KATODE_PIN, 0);
-  analogWrite(LED_ANODE_PIN, 0);
-}
 
 // Threshold of the detector, scale is 0 to 1
 #define NOISE_THRESHOLD 0.1
@@ -56,12 +42,8 @@ void setup()
 // retriggering on the same beat.
 #define MIN_BEAT_INTERVAL 100
 
-// Which FFT bin is used for beat detection.
-// We have a sample rate of 44.1KHz, and FFT size of 256.
-// So bin 4 collects the energy of components from
-// roughly 300Hz to 380Hz. This reaact nicely to
-// a snare drum beat.
-#define DETECTOR_BIN 4
+// Frequency detector center frequency.
+#define DETECTOR_FREQUENCY 300
 
 // Delay in mS between two consecutive samples of the 
 // spectrum frequency content.
@@ -87,12 +69,29 @@ long lastBeatTime=0;
 // when there are rythm alterations in the beat.
 float lastBeatInterval=0;
 
+
+void setup()
+{
+  AudioMemory(12);
+  sgtl5000.enable();
+  sgtl5000.inputSelect(AUDIO_INPUT_MIC);
+  sgtl5000.lineInLevel(15);  
+  
+  toneDetector.frequency(DETECTOR_FREQUENCY);
+  
+  // For testing we have for now a LED between LED_KATODE_PIN and LED_ANODE_PIN
+  pinMode(LED_KATODE_PIN, OUTPUT);
+  pinMode(LED_ANODE_PIN, OUTPUT);
+  analogWrite(LED_KATODE_PIN, 0);
+  analogWrite(LED_ANODE_PIN, 0);
+}
+
 void loop()
 {
-  while(!fft.available()){ delay(10); }
+  while(!toneDetector.available()){ delay(10); }
   
-  // Get the current energy in the FFT bin.
-  float currentEnergy=fft.read(DETECTOR_BIN);
+  // Get the current energy from the detector.
+  float currentEnergy=toneDetector.read();
   
   if(currentEnergy>peakDetectorMax)
   {
